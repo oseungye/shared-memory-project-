@@ -1,89 +1,69 @@
 /* =========================================================================
    Shared Memory Project — AI 분석 엔진 (script.js)
    -------------------------------------------------------------------------
-   ★ 본 파일은 "분석 로직"에 집중합니다.
-     UI/다국어 텍스트 전환은 i18n.js 가 담당합니다. (둘은 독립적으로 동작)
-
-   ★ 핵심 동작
-      1) 입력 텍스트의 언어를 유니코드 범위 기반으로 감지
-      2) 감지된 언어에 맞는 "분석기"를 골라 호출
-      3) 키워드 / 감정 강도 / 외교적·민족주의적 표현 / 서술 스타일 분석
-      4) 결과를 입력 언어로 출력 (한국어 입력 → 한국어 결과)
-      5) 두 언어 이상이 섞이면 "복합 언어 서술 감지" 모드로 분기
-
-   ★ 외부 API를 쓰지 않는 이유
-      - 사이트가 GitHub Pages(정적 호스팅)에서 동작해야 함
-      - API 키 노출 위험 / 호출 비용 / 네트워크 의존성을 모두 제거
-      - 본 프로젝트의 목적은 "역사 인식 차이의 체험"이므로,
-        규칙 기반 분석으로도 학습 목적 달성이 충분함
+   ▣ 이번 수정의 핵심 변경점
+     1) analyzeNarrative(text) 가 { ko, ja, en } 객체를 반환하도록 변경
+     2) detectLanguage(text) 의 결과로 그 객체에서 인덱싱해 출력
+     3) aiResult.innerHTML 에 박혀 있던 한국어 하드코딩 문자열을 제거하고,
+        반드시 analysis[language] 를 거치게 만듦
+   ------------------------------------------------------------------------- 
+   ▣ 기존 코드의 문제
+     이전 script.js 에서는 분석 함수가 HTML을 직접 생성하면서
+     한국어 문구를 그대로 박아 넣고 있었음. detectLanguage 가 동작해도
+     렌더링 단계에서 그 값을 사용하지 않아 결과가 항상 한국어로만 표시됨.
    ========================================================================= */
+
 (function () {
   "use strict";
 
   /* ───────────────────────────────────────────────────────────────────────
-     [1] 언어 감지 — 유니코드 블록 기반 룰 베이스
-     ───────────────────────────────────────────────────────────────────────
-     ▸ 한글:    U+AC00–U+D7AF (음절), U+1100–U+11FF (자모), U+3130–U+318F (호환)
-     ▸ 히라가나: U+3040–U+309F
-     ▸ 가타카나: U+30A0–U+30FF
-     ▸ 라틴 알파벳: A–Z / a–z
-
-     반환값은 사용된 스크립트의 "집합" + "주 언어".
-     이렇게 set 단위로 추적해야 혼합 언어를 정확히 판정할 수 있다.
+     [1] 언어 감지
+         - 한글 / 가나 / 라틴 알파벳의 유니코드 범위로 판별
+         - 두 종류 이상 섞이면 mixed=true
+         - 단일 언어일 때 primary 가 'ko' | 'ja' | 'en'
      ─────────────────────────────────────────────────────────────────────── */
   const RE = {
     hangul: /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g,
     kana:   /[\u3040-\u309F\u30A0-\u30FF]/g,
     latin:  /[A-Za-z]/g,
-    han:    /[\u4E00-\u9FFF]/g, // 한자 (단독으로는 언어 판정 어려움)
   };
 
   function detectLanguage(text) {
     if (!text || !text.trim()) {
-      return { primary: null, scripts: [], mixed: false, counts: {} };
+      return { primary: null, scripts: [], mixed: false };
     }
 
-    const counts = {
-      hangul: (text.match(RE.hangul) || []).length,
-      kana:   (text.match(RE.kana)   || []).length,
-      latin:  (text.match(RE.latin)  || []).length,
-      han:    (text.match(RE.han)    || []).length,
-    };
+    const cKo = (text.match(RE.hangul) || []).length;
+    const cJa = (text.match(RE.kana)   || []).length;
+    const cEn = (text.match(RE.latin)  || []).length;
 
-    // 어떤 스크립트가 의미 있게 등장했는지 set으로 표시
     const scripts = [];
-    if (counts.hangul > 0) scripts.push("ko");
-    if (counts.kana   > 0) scripts.push("ja");
-    // 알파벳은 한국어/일본어 문장 안에서도 자주 끼므로,
-    // 한글·가나가 전혀 없을 때만 영어로 인정 (혼합 오판 방지)
-    if (counts.latin > 0 && counts.hangul === 0 && counts.kana === 0) {
-      scripts.push("en");
-    }
+    if (cKo > 0) scripts.push("ko");
+    if (cJa > 0) scripts.push("ja");
+    // 한글·가나가 전혀 없을 때에만 영어로 인정 (혼합 오판 방지)
+    if (cEn > 0 && cKo === 0 && cJa === 0) scripts.push("en");
 
-    // 주 언어 = 가장 많이 등장한 스크립트
+    // 가장 많이 등장한 스크립트가 주 언어
     let primary = null;
     let max = 0;
-    [["ko", counts.hangul], ["ja", counts.kana], ["en", counts.latin]].forEach(([lang, c]) => {
+    [["ko", cKo], ["ja", cJa], ["en", cEn]].forEach(([lang, c]) => {
       if (c > max) { max = c; primary = lang; }
     });
 
-    // 혼합 판정: 의미 있는 스크립트가 2개 이상
-    const mixed = scripts.length >= 2;
-
-    return { primary, scripts, mixed, counts };
+    return {
+      primary,
+      scripts,
+      mixed: scripts.length >= 2,
+      counts: { ko: cKo, ja: cJa, en: cEn },
+    };
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [2] 언어별 어휘 사전
-     ───────────────────────────────────────────────────────────────────────
-     키워드는 4개 카테고리로 나눠둔다:
-       - history:       역사 사건/시대 관련 단어 (핵심 키워드 후보)
-       - emotion_*:     감정 강도 측정용 (강/중/약 3단계)
-       - diplomatic:    외교적/중립적 표현 (양국·협상·평화 등)
-       - nationalistic: 민족주의적 표현 (침략·강탈·고유 등)
-
-     ※ 같은 사건을 "양국에서 서로 다르게 부르는 단어"를 포함시켜,
-        역사 인식 차이가 분석 결과에 그대로 드러나도록 설계했다.
+     [2] 어휘 사전
+         - history:       핵심 키워드 후보
+         - emotion_*:     감정 강도 (강/중/약 가중치)
+         - diplomatic:    외교적·중립적 표현
+         - nationalistic: 민족주의적 표현
      ─────────────────────────────────────────────────────────────────────── */
   const LEX = {
     ko: {
@@ -112,154 +92,24 @@
     },
   };
 
-  /* ───────────────────────────────────────────────────────────────────────
-     [3] 언어별 출력 템플릿
-     ───────────────────────────────────────────────────────────────────────
-     같은 "구조"를 갖되, 표현 톤은 각 언어의 역사 서술 관습을 반영했다:
-       - ko: 직접적 감정 표현, 피해자 시점 어휘
-       - ja: 간접·완곡, 거리감 있는 문체
-       - en: 분석적·중립적, 사건명 중심
-     ─────────────────────────────────────────────────────────────────────── */
-  const TEMPLATES = {
-    ko: {
-      labels: {
-        keywords:      "핵심 키워드",
-        emotion:       "감정 강도",
-        diplomatic:    "외교적 표현 비중",
-        nationalistic: "민족주의적 표현 비중",
-        style:         "서술 방식",
-        perception:    "역사 인식 특징",
-        summary:       "종합 분석",
-        detected:      "감지된 언어",
-      },
-      detected: "한국어",
-      styleByEmotion: {
-        strong: "감정이 전면에 드러나는 직접적·고발적 서술",
-        mid:    "회상과 감정이 교차하는 개인사 중심 서술",
-        soft:   "조용한 회상조의 서정적 서술",
-        flat:   "사실 나열 중심의 담담한 서술",
-      },
-      perceptionFn: (d, n) => {
-        if (n > d && n >= 2) return "피해자 시점에서 사건의 부당함을 강조하는 인식";
-        if (d > n && d >= 2) return "양국 관계와 화해 가능성을 모색하는 인식";
-        if (d === 0 && n === 0) return "특정 시각이 두드러지지 않는 개인 기억 중심의 인식";
-        return "감정과 사실, 화해와 비판이 공존하는 양가적 인식";
-      },
-      summaryFn: (ctx) => {
-        const kw = ctx.keywords[0] || "역사";
-        return `이 글은 '${kw}'을(를) 중심으로, ${ctx.style}을 보입니다. ` +
-               `외교적 표현 ${ctx.diplomaticPct}%, 민족주의적 표현 ${ctx.nationalisticPct}%로 ` +
-               `${ctx.perception}이(가) 드러납니다. 공동의 기억으로 확장하려면 ` +
-               `${ctx.nationalisticPct > ctx.diplomaticPct ? "상대국 시점의 어휘를 함께 검토" : "구체적 사건명과 시기를 보강"}하는 것이 좋겠습니다.`;
-      },
-    },
-
-    ja: {
-      labels: {
-        keywords:      "キーワード",
-        emotion:       "感情の強度",
-        diplomatic:    "外交的表現の比率",
-        nationalistic: "ナショナリズム的表現の比率",
-        style:         "叙述の方法",
-        perception:    "歴史認識の特徴",
-        summary:       "総合分析",
-        detected:      "検出された言語",
-      },
-      detected: "日本語",
-      styleByEmotion: {
-        strong: "感情を前面に出した直接的・告発的な叙述",
-        mid:    "回想と感情が交差する個人史的叙述",
-        soft:   "静かな回想調の叙情的な叙述",
-        flat:   "事実を淡々と列挙する叙述",
-      },
-      perceptionFn: (d, n) => {
-        if (n > d && n >= 2) return "被害者の視点から事件の不当性を強調する認識";
-        if (d > n && d >= 2) return "両国関係と和解の可能性を模索する認識";
-        if (d === 0 && n === 0) return "特定の視点が前面に出ない個人の記憶中心の認識";
-        return "感情と事実、和解と批判が併存する両義的な認識";
-      },
-      summaryFn: (ctx) => {
-        const kw = ctx.keywords[0] || "歴史";
-        return `この文章は「${kw}」を中心に、${ctx.style}を示しています。` +
-               `外交的表現 ${ctx.diplomaticPct}%、ナショナリズム的表現 ${ctx.nationalisticPct}% であり、` +
-               `${ctx.perception}が読み取れます。共通の記憶へと拡張するためには、` +
-               `${ctx.nationalisticPct > ctx.diplomaticPct ? "相手国の視点の語彙を併せて検討する" : "具体的な事件名と時期を補強する"}ことが望ましいでしょう。`;
-      },
-    },
-
-    en: {
-      labels: {
-        keywords:      "Keywords",
-        emotion:       "Emotional Intensity",
-        diplomatic:    "Diplomatic Expression Ratio",
-        nationalistic: "Nationalistic Expression Ratio",
-        style:         "Narrative Style",
-        perception:    "Historical Perception",
-        summary:       "Overall Analysis",
-        detected:      "Detected Language",
-      },
-      detected: "English",
-      styleByEmotion: {
-        strong: "Direct, accusatory narrative with foregrounded emotion",
-        mid:    "Personal history weaving recollection with feeling",
-        soft:   "Lyrical, quietly reminiscent narrative",
-        flat:   "Detached, fact-listing narrative",
-      },
-      perceptionFn: (d, n) => {
-        if (n > d && n >= 2) return "victim-centered perception emphasizing the injustice of events";
-        if (d > n && d >= 2) return "perception oriented toward bilateral relations and reconciliation";
-        if (d === 0 && n === 0) return "personal-memory perception without a dominant ideological frame";
-        return "ambivalent perception where emotion and fact, critique and reconciliation coexist";
-      },
-      summaryFn: (ctx) => {
-        const kw = ctx.keywords[0] || "history";
-        return `Centered on "${kw}", the text exhibits a ${ctx.style.toLowerCase()}. ` +
-               `Diplomatic expressions account for ${ctx.diplomaticPct}% and nationalistic ones for ${ctx.nationalisticPct}%, ` +
-               `revealing a ${ctx.perception}. To expand this into shared memory, it would help to ` +
-               `${ctx.nationalisticPct > ctx.diplomaticPct ? "consider vocabulary from the other country's perspective" : "add specific event names and dates"}.`;
-      },
-    },
-
-    // 혼합 언어 — 별도 템플릿
-    mixed: {
-      labels: {
-        keywords:      "복합 키워드 / 複合キーワード / Mixed Keywords",
-        emotion:       "감정 강도 / 感情強度 / Emotional Intensity",
-        diplomatic:    "외교 표현 / 外交表現 / Diplomatic",
-        nationalistic: "민족 표현 / 民族表現 / Nationalistic",
-        style:         "서술 방식 / 叙述スタイル / Narrative Style",
-        perception:    "역사 인식 / 歴史認識 / Historical Perception",
-        summary:       "복합 언어 서술 분석 / Mixed-Language Narrative Analysis",
-        detected:      "감지된 언어 / Detected Languages",
-      },
-      detected: "복합 언어 서술 감지 (Mixed-Language Narrative Detected)",
-    },
-  };
-
-  /* ───────────────────────────────────────────────────────────────────────
-     [4] 카운팅 헬퍼 — 텍스트에서 카테고리별 매칭 단어 추출
-     ─────────────────────────────────────────────────────────────────────── */
+  /* 영문 비교는 소문자, 한·일은 원문 그대로 비교 */
   function matchWords(text, list) {
-    const found = [];
     const lower = text.toLowerCase();
-    list.forEach((w) => {
-      // 영문은 대소문자 무시, 한·일은 그대로 비교
+    return list.filter((w) => {
       const isLatin = /[A-Za-z]/.test(w);
       const target  = isLatin ? w.toLowerCase() : w;
       const hay     = isLatin ? lower : text;
-      if (hay.includes(target)) found.push(w);
+      return hay.includes(target);
     });
-    return found;
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [5] 단일 언어 분석 — 메인 파이프라인
+     [3] 점수 계산 — 언어 공통
+         감정 강도, 외교/민족 표현 비율, 키워드 추출
      ─────────────────────────────────────────────────────────────────────── */
-  function analyzeOne(text, lang) {
+  function scoreOne(text, lang) {
     const lex = LEX[lang];
-    const tpl = TEMPLATES[lang];
 
-    // 5-1. 카테고리별 매칭
     const kwHits = matchWords(text, lex.history);
     const strong = matchWords(text, lex.emotion_strong);
     const mid    = matchWords(text, lex.emotion_mid);
@@ -267,144 +117,254 @@
     const diplo  = matchWords(text, lex.diplomatic);
     const nation = matchWords(text, lex.nationalistic);
 
-    // 5-2. 감정 강도 점수 (가중치: 강3 / 중2 / 약1)
-    const emotionScore = strong.length * 3 + mid.length * 2 + soft.length * 1;
-    let emotionLevel;
-    if      (emotionScore >= 6) emotionLevel = "strong";
-    else if (emotionScore >= 3) emotionLevel = "mid";
-    else if (emotionScore >= 1) emotionLevel = "soft";
-    else                        emotionLevel = "flat";
+    // 감정 강도 (강3 / 중2 / 약1 가중)
+    const eScore = strong.length * 3 + mid.length * 2 + soft.length * 1;
+    let level;
+    if      (eScore >= 6) level = "strong";
+    else if (eScore >= 3) level = "mid";
+    else if (eScore >= 1) level = "soft";
+    else                  level = "flat";
 
-    // 5-3. 외교 / 민족 비율 (전체 매칭 어휘 대비)
-    const totalCat = diplo.length + nation.length;
-    const diplomaticPct    = totalCat ? Math.round((diplo.length  / totalCat) * 100) : 0;
-    const nationalisticPct = totalCat ? Math.round((nation.length / totalCat) * 100) : 0;
+    // 외교 vs 민족 비율
+    const total = diplo.length + nation.length;
+    const diploPct  = total ? Math.round((diplo.length  / total) * 100) : 0;
+    const nationPct = total ? Math.round((nation.length / total) * 100) : 0;
 
-    // 5-4. 키워드 — 사전에 없으면 텍스트에서 긴 토큰 3개를 대체로 사용
+    // 키워드 (사전 매칭이 없으면 긴 토큰으로 폴백)
     let keywords = kwHits.slice(0, 5);
     if (keywords.length === 0) {
       keywords = text
-        .split(/[\s,.;:!?。、！？「」『』\(\)\[\]\-—]+/)
+        .split(/[\s,.;:!?。、！？「」『』()\[\]\-—]+/)
         .filter((w) => w.length >= 2)
         .sort((a, b) => b.length - a.length)
         .slice(0, 3);
     }
 
-    // 5-5. 감정 강도 표시 문자열 (UI 친화적)
-    const emotionLabel = {
+    return {
+      keywords,
+      level,
+      diploPct,
+      nationPct,
+      matched: { strong, mid, soft, diplo, nation },
+    };
+  }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     [4] ★ 핵심 함수 — analyzeNarrative(text)
+         반환값: { language, primary, mixed, analysis: { ko, ja, en } }
+         analysis 객체에 세 언어 분석 결과를 모두 담아 두기 때문에,
+         호출부에서 analysis[language] 만 꺼내 출력하면 된다.
+     ─────────────────────────────────────────────────────────────────────── */
+  function analyzeNarrative(text) {
+    const det = detectLanguage(text);
+    const primary = det.primary || "ko";
+
+    // 점수는 "주 언어"의 사전을 기준으로 계산하되,
+    // 분석 문구는 ko/ja/en 모두 생성해 둔다.
+    const s = scoreOne(text, primary);
+    const kw0 = s.keywords[0] || "";
+
+    /* ── 감정 강도 라벨 (언어별 표기) ── */
+    const intensityLabel = {
       ko: { strong:"강 (★★★)", mid:"중 (★★☆)", soft:"약 (★☆☆)", flat:"평탄 (☆☆☆)" },
       ja: { strong:"強 (★★★)", mid:"中 (★★☆)", soft:"弱 (★☆☆)", flat:"平 (☆☆☆)" },
       en: { strong:"High (★★★)", mid:"Medium (★★☆)", soft:"Low (★☆☆)", flat:"Flat (☆☆☆)" },
-    }[lang][emotionLevel];
+    };
 
-    // 5-6. 종합 요약 컨텍스트
-    const style      = tpl.styleByEmotion[emotionLevel];
-    const perception = tpl.perceptionFn(diplo.length, nation.length);
-    const summary    = tpl.summaryFn({
-      keywords, style, perception, diplomaticPct, nationalisticPct,
+    /* ── 서술 방식 (감정 강도에 따라) ── */
+    const styleText = {
+      ko: {
+        strong: "감정이 전면에 드러나는 직접적·고발적 서술",
+        mid:    "회상과 감정이 교차하는 개인사 중심 서술",
+        soft:   "조용한 회상조의 서정적 서술",
+        flat:   "사실 나열 중심의 담담한 서술",
+      },
+      ja: {
+        strong: "感情を前面に出した直接的・告発的な叙述",
+        mid:    "回想と感情が交差する個人史的叙述",
+        soft:   "静かな回想調の叙情的な叙述",
+        flat:   "事実を淡々と列挙する叙述",
+      },
+      en: {
+        strong: "direct, accusatory narrative with foregrounded emotion",
+        mid:    "personal-history narrative weaving recollection with feeling",
+        soft:   "lyrical, quietly reminiscent narrative",
+        flat:   "detached, fact-listing narrative",
+      },
+    };
+
+    /* ── 역사 인식 특징 (외교 vs 민족 비율에 따라) ── */
+    function perceptionText(lang, d, n) {
+      const map = {
+        ko: {
+          victim:    "피해자 시점에서 사건의 부당함을 강조하는 인식",
+          recon:     "양국 관계와 화해 가능성을 모색하는 인식",
+          neutral:   "특정 시각이 두드러지지 않는 개인 기억 중심의 인식",
+          ambivalent:"감정과 사실, 화해와 비판이 공존하는 양가적 인식",
+        },
+        ja: {
+          victim:    "被害者の視点から事件の不当性を強調する認識",
+          recon:     "両国関係と和解の可能性を模索する認識",
+          neutral:   "特定の視点が前面に出ない個人の記憶中心の認識",
+          ambivalent:"感情と事実、和解と批判が併存する両義的な認識",
+        },
+        en: {
+          victim:    "victim-centered perception emphasizing the injustice of events",
+          recon:     "perception oriented toward bilateral relations and reconciliation",
+          neutral:   "personal-memory perception without a dominant ideological frame",
+          ambivalent:"ambivalent perception where emotion and fact, critique and reconciliation coexist",
+        },
+      }[lang];
+      if (n > d && n >= 2) return map.victim;
+      if (d > n && d >= 2) return map.recon;
+      if (d === 0 && n === 0) return map.neutral;
+      return map.ambivalent;
+    }
+
+    /* ── 종합 요약 문구 (언어별 톤) ── */
+    function summaryText(lang) {
+      const style       = styleText[lang][s.level];
+      const perception  = perceptionText(lang, s.diploPct ? 2 : 0, s.nationPct ? 2 : 0);
+      const wantsRecon  = s.nationPct > s.diploPct;
+
+      if (lang === "ko") {
+        // 키워드 중 일본어 측 호칭이 섞이지 않도록, 출력 언어용 키워드는 그 언어 사전에서 다시 한 번 매칭 시도
+        const kwForLang = matchWords(text, LEX.ko.history)[0] || kw0 || "역사";
+        return `이 글은 '${kwForLang}'을(를) 중심으로, ${style}을 보입니다. ` +
+               `외교적 표현 ${s.diploPct}%, 민족주의적 표현 ${s.nationPct}%로 ` +
+               `${perception}이(가) 드러납니다. ` +
+               (wantsRecon
+                 ? "상대국 시점의 어휘를 함께 검토하면 공동의 기억으로 확장할 여지가 커집니다."
+                 : "구체적 사건명과 시기를 보강하면 공동의 기억으로 확장하기 좋습니다.");
+      }
+      if (lang === "ja") {
+        const kwForLang = matchWords(text, LEX.ja.history)[0] || kw0 || "歴史";
+        // 요구사항 4번의 예시 톤을 반영: 「~」という表現から ~ 視点が見られます。
+        const opener = kwForLang
+          ? `「${kwForLang}」という表現から、`
+          : `この文章からは、`;
+        const stance = wantsRecon ? "国家中心的視点" : "対話志向的視点";
+        return `${opener}${stance}が見られます。` +
+               `叙述は${style}であり、外交的表現 ${s.diploPct}%、ナショナリズム的表現 ${s.nationPct}% で、` +
+               `${perception}が読み取れます。` +
+               (wantsRecon
+                 ? "相手国の視点の語彙を併せて検討することで、共通の記憶への拡張が可能になります。"
+                 : "具体的な事件名と時期を補強すると、共通の記憶へ繋がりやすくなります。");
+      }
+      // en
+      const kwForLang = matchWords(text, LEX.en.history)[0] || kw0 || "history";
+      // 요구사항 5번의 예시 톤을 반영
+      const opener = (s.diploPct > s.nationPct)
+        ? "This narrative uses relatively diplomatic and neutral wording."
+        : (s.nationPct > s.diploPct)
+          ? "This narrative leans toward nationally framed, victim-centered wording."
+          : "This narrative balances diplomatic and nationally framed wording.";
+      return `${opener} Centered on "${kwForLang}", it reads as a ${style}. ` +
+             `Diplomatic expressions: ${s.diploPct}%, nationalistic: ${s.nationPct}%, ` +
+             `revealing a ${perception}. ` +
+             (wantsRecon
+               ? "Considering vocabulary from the other country's perspective would open it toward shared memory."
+               : "Adding specific event names and dates would help expand it into shared memory.");
+    }
+
+    /* ── 라벨 (언어별) ── */
+    const labels = {
+      ko: { keywords:"핵심 키워드", emotion:"감정 강도", diplomatic:"외교적 표현",
+            nationalistic:"민족주의적 표현", style:"서술 방식", perception:"역사 인식 특징",
+            summary:"종합 분석", detected:"감지된 언어" },
+      ja: { keywords:"キーワード", emotion:"感情の強度", diplomatic:"外交的表現",
+            nationalistic:"ナショナリズム的表現", style:"叙述の方法", perception:"歴史認識の特徴",
+            summary:"総合分析", detected:"検出された言語" },
+      en: { keywords:"Keywords", emotion:"Emotional Intensity", diplomatic:"Diplomatic Expressions",
+            nationalistic:"Nationalistic Expressions", style:"Narrative Style", perception:"Historical Perception",
+            summary:"Overall Analysis", detected:"Detected Language" },
+    };
+
+    const detectedName = { ko:"한국어", ja:"日本語", en:"English" };
+
+    /* ── 언어별 결과 객체 (요구사항 2번 구조) ── */
+    const analysis = {};
+    ["ko", "ja", "en"].forEach((lng) => {
+      analysis[lng] = {
+        labels:    labels[lng],
+        detected:  detectedName[lng],
+        keywords:  s.keywords,
+        emotion:   intensityLabel[lng][s.level],
+        style:     styleText[lng][s.level],
+        perception: perceptionText(lng,
+                      s.matched.diplo.length,
+                      s.matched.nation.length),
+        diploPct:  s.diploPct,
+        nationPct: s.nationPct,
+        summary:   summaryText(lng),
+      };
     });
 
     return {
-      lang,
-      detected:        tpl.detected,
-      labels:          tpl.labels,
-      keywords,
-      emotion:         emotionLabel,
-      emotionScore,
-      diplomaticPct,
-      nationalisticPct,
-      style,
-      perception,
-      summary,
-      _matched: { diplo, nation, strong, mid, soft },
+      language: primary,   // ★ 호출부가 analysis[language] 로 인덱싱
+      primary,
+      mixed: det.mixed,
+      scripts: det.scripts,
+      analysis,
     };
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [6] 혼합 언어 분석
-     ───────────────────────────────────────────────────────────────────────
-     ▸ 감지된 각 언어로 individually 분석 후 결과를 합친다.
-     ▸ 요약은 3개국어 병기 — "복합 언어 서술 감지"의 시각적 효과.
+     [5] 렌더링 — analysis[language] 만 사용해 HTML 생성
+         어떤 경우에도 한국어 문자열을 직접 박아 넣지 않는다.
      ─────────────────────────────────────────────────────────────────────── */
-  function analyzeMixed(text, scripts) {
-    const partials = scripts.map((lng) => analyzeOne(text, lng));
+  function buildHTML(a, langPill) {
+    const L = a.labels;
+    const bar = (label, pct, color) => `
+      <div class="smp-bar-row">
+        <span class="smp-bar-label">${label}</span>
+        <div class="smp-bar-track">
+          <div class="smp-bar-fill" style="width:${pct}%;background:${color};"></div>
+        </div>
+        <span class="smp-bar-val">${pct}%</span>
+      </div>`;
 
-    const keywords = [];
-    partials.forEach((p) => p.keywords.forEach((k) => {
-      if (!keywords.includes(k)) keywords.push(k);
-    }));
-
-    const avg = (key) =>
-      Math.round(partials.reduce((s, p) => s + p[key], 0) / partials.length);
-
-    const emotionScoreSum = partials.reduce((s, p) => s + p.emotionScore, 0);
-
-    const summary = {
-      ko: `이 글은 ${scripts.map((s)=>({ko:"한국어",ja:"일본어",en:"영어"}[s])).join(" + ")} 가 함께 사용된 복합 언어 서술입니다. 서로 다른 언어 공동체의 어휘가 한 문장 안에 공존한다는 점에서, 이미 '공동의 기억'을 향한 서사적 시도로 읽힙니다.`,
-      ja: `この文章は ${scripts.map((s)=>({ko:"韓国語",ja:"日本語",en:"英語"}[s])).join(" + ")} が混在する複合言語叙述です。異なる言語共同体の語彙が一つの文章に共存していること自体が、すでに「共通の記憶」へ向かう叙事的試みとして読み取れます。`,
-      en: `This is a mixed-language narrative combining ${scripts.map((s)=>({ko:"Korean",ja:"Japanese",en:"English"}[s])).join(" + ")}. The coexistence of vocabularies from different linguistic communities within a single passage can itself be read as a narrative move toward shared memory.`,
-    };
-
-    return {
-      lang:       "mixed",
-      mixed:      true,
-      scripts,
-      detected:   TEMPLATES.mixed.detected,
-      labels:     TEMPLATES.mixed.labels,
-      keywords:   keywords.slice(0, 8),
-      emotion: {
-        ko: `종합 강도 점수: ${emotionScoreSum}`,
-        ja: `総合強度スコア: ${emotionScoreSum}`,
-        en: `Combined intensity score: ${emotionScoreSum}`,
-      },
-      diplomaticPct:    avg("diplomaticPct"),
-      nationalisticPct: avg("nationalisticPct"),
-      style: {
-        ko: partials.map((p)=>`[${p.lang}] ${p.style}`).join(" / "),
-        ja: partials.map((p)=>`[${p.lang}] ${p.style}`).join(" / "),
-        en: partials.map((p)=>`[${p.lang}] ${p.style}`).join(" / "),
-      },
-      perception: {
-        ko: partials.map((p)=>`[${p.lang}] ${p.perception}`).join(" / "),
-        ja: partials.map((p)=>`[${p.lang}] ${p.perception}`).join(" / "),
-        en: partials.map((p)=>`[${p.lang}] ${p.perception}`).join(" / "),
-      },
-      summary,
-      partials,
-    };
+    return `
+      <div class="smp-result-head">
+        <span class="smp-pill smp-pill-${langPill}">${a.detected}</span>
+      </div>
+      <dl class="smp-result-grid">
+        <dt>${L.keywords}</dt>
+        <dd>${a.keywords.length
+              ? a.keywords.map(k => `<span class="smp-kw">${k}</span>`).join(" ")
+              : "—"}</dd>
+        <dt>${L.emotion}</dt>     <dd>${a.emotion}</dd>
+        <dt>${L.style}</dt>       <dd>${a.style}</dd>
+        <dt>${L.perception}</dt>  <dd>${a.perception}</dd>
+      </dl>
+      <div class="smp-bars">
+        ${bar(L.diplomatic,    a.diploPct,  "#2563eb")}
+        ${bar(L.nationalistic, a.nationPct, "#b91c1c")}
+      </div>
+      <div class="smp-summary">
+        <strong>${L.summary}</strong>
+        <p>${a.summary}</p>
+      </div>
+    `;
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [7] 공개 진입점
-     ─────────────────────────────────────────────────────────────────────── */
-  function analyze(text) {
-    const det = detectLanguage(text);
-
-    if (!det.primary && det.scripts.length === 0) return null;
-    if (det.mixed) return analyzeMixed(text, det.scripts);
-
-    const lang = det.primary || "ko";
-    return analyzeOne(text, lang);
-  }
-
-  /* ───────────────────────────────────────────────────────────────────────
-     [8] 결과 렌더링
-     ───────────────────────────────────────────────────────────────────────
-     ▸ 결과를 그릴 박스 후보:
-        1) #smp-result (i18n.js가 만든 영역)
-        2) #ai-analysis-result, [data-ai-result] (기존 컨테이너)
-        3) 위 어느 것도 없으면 textarea 옆에 새로 만든다
-     ▸ 기존 카드/UI 디자인은 절대 수정하지 않음 — 결과 박스만 갱신
+     [6] 결과 박스 찾기
+         기존 사이트에서 흔히 쓰이는 ID/클래스 후보를 모두 탐색.
+         어느 것도 없으면 입력창 옆에 #smp-result 를 새로 만든다.
      ─────────────────────────────────────────────────────────────────────── */
   function getResultBox() {
-    const candidates = [
-      document.getElementById("smp-result"),
-      document.getElementById("ai-analysis-result"),
-      document.querySelector("[data-ai-result]"),
-    ].filter(Boolean);
-    if (candidates.length) return candidates[0];
-
-    const input = document.getElementById("smp-input") || document.querySelector("textarea");
+    const cands = [
+      "#aiResult", "#ai-result", "#ai_analysis", "#ai-analysis",
+      "#ai-analysis-result", "#analysisResult", "#analysis-result",
+      "#smp-result", "[data-ai-result]",
+    ];
+    for (const sel of cands) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    // 없으면 새로 생성
+    const input = findInputArea();
     const box = document.createElement("div");
     box.id = "smp-result";
     box.className = "smp-result";
@@ -412,62 +372,61 @@
     return box;
   }
 
-  function renderResult(r) {
-    const box = getResultBox();
-    if (!box) return;
+  function findInputArea() {
+    const cands = [
+      "#smp-input", "#narrative-input", "#narrative", "#userText", "#user-text",
+      "textarea[data-analyze]", "textarea",
+    ];
+    for (const sel of cands) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
 
-    // 혼합 언어 결과는 객체 형태의 다국어 문구이므로 적절히 꺼내 쓴다
-    const pick = (v) => (typeof v === "string" ? v : (v?.ko || v?.en || ""));
-
-    const L = r.labels;
-
-    // 막대 그래프 한 줄
-    const pctBar = (label, pct, color) => `
-      <div class="smp-bar-row">
-        <span class="smp-bar-label">${label}</span>
-        <div class="smp-bar-track">
-          <div class="smp-bar-fill" style="width:${pct}%;background:${color};"></div>
-        </div>
-        <span class="smp-bar-val">${pct}%</span>
-      </div>
-    `;
-
-    box.innerHTML = `
-      <div class="smp-result-head">
-        <span class="smp-pill smp-pill-${r.mixed ? "mix" : r.lang}">${r.detected}</span>
-      </div>
-
-      <dl class="smp-result-grid">
-        <dt>${L.keywords}</dt>
-        <dd>${r.keywords.length
-                ? r.keywords.map(k => `<span class="smp-kw">${k}</span>`).join(" ")
-                : "—"}</dd>
-
-        <dt>${L.emotion}</dt>
-        <dd>${pick(r.emotion)}</dd>
-
-        <dt>${L.style}</dt>
-        <dd>${pick(r.style)}</dd>
-
-        <dt>${L.perception}</dt>
-        <dd>${pick(r.perception)}</dd>
-      </dl>
-
-      <div class="smp-bars">
-        ${pctBar(L.diplomatic,    r.diplomaticPct,    "#2563eb")}
-        ${pctBar(L.nationalistic, r.nationalisticPct, "#b91c1c")}
-      </div>
-
-      <div class="smp-summary">
-        <strong>${L.summary}</strong>
-        <p>${pick(r.summary)}</p>
-      </div>
-    `;
-    box.hidden = false;
+  function findAnalyzeButton() {
+    // 1순위: 명시적 ID
+    const ids = ["#smp-analyze", "#runAnalysis", "#run-analysis", "#analyze-btn", "#analyzeBtn"];
+    for (const sel of ids) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    // 2순위: 텍스트 매칭
+    return Array.from(document.querySelectorAll("button, a, [role='button']"))
+      .find((el) => /AI\s*분석|分析|analysis|analyze/i.test(el.textContent || ""));
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [9] 최소 CSS — smp- prefix로 기존 스타일과 충돌 없음
+     [7] 메인 핸들러
+         ★ 여기서 핵심 수정: 한국어로 하드코딩하지 않고
+            analysis[language] 의 내용만 가지고 HTML을 만든다.
+     ─────────────────────────────────────────────────────────────────────── */
+  function runAnalysis() {
+    const input = findInputArea();
+    const box   = getResultBox();
+    if (!input || !box) return;
+
+    const text = input.value || "";
+    if (!text.trim()) {
+      box.innerHTML = `<p style="color:#888;">— No input —</p>`;
+      box.hidden = false;
+      return;
+    }
+
+    // 분석 중 표시
+    box.innerHTML = `<p style="color:#888;">… analyzing …</p>`;
+    box.hidden = false;
+
+    setTimeout(() => {
+      const result   = analyzeNarrative(text);
+      const language = result.language;          // ★ 감지된 언어
+      const a        = result.analysis[language]; // ★ 그 언어의 결과만 꺼냄
+      box.innerHTML  = buildHTML(a, language);
+    }, 300);
+  }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     [8] 최소 CSS (smp- prefix — 기존 디자인과 충돌 없음)
      ─────────────────────────────────────────────────────────────────────── */
   function injectStyles() {
     if (document.getElementById("smp-analysis-style")) return;
@@ -480,15 +439,12 @@
       .smp-pill-ko{background:#e8f1ff;color:#1d4ed8;}
       .smp-pill-ja{background:#ffeaea;color:#b91c1c;}
       .smp-pill-en{background:#eaf7ec;color:#166534;}
-      .smp-pill-mix{background:#f3e8ff;color:#6d28d9;}
-
       .smp-result-grid{display:grid;grid-template-columns:160px 1fr;
         gap:10px 16px;margin:0 0 16px;}
       .smp-result-grid dt{font-weight:600;color:#444;}
       .smp-result-grid dd{margin:0;color:#222;line-height:1.55;}
       .smp-kw{display:inline-block;background:#f4f4f5;color:#222;
         padding:2px 8px;border-radius:999px;font-size:12px;margin:0 4px 4px 0;}
-
       .smp-bars{margin:12px 0 16px;}
       .smp-bar-row{display:grid;grid-template-columns:160px 1fr 48px;
         align-items:center;gap:10px;margin-bottom:6px;font-size:13px;}
@@ -496,7 +452,6 @@
       .smp-bar-track{height:8px;background:#f1f1f3;border-radius:999px;overflow:hidden;}
       .smp-bar-fill{height:100%;border-radius:999px;transition:width .4s ease;}
       .smp-bar-val{text-align:right;color:#555;font-variant-numeric:tabular-nums;}
-
       .smp-summary{padding:12px 14px;background:#fafafa;border-radius:8px;}
       .smp-summary strong{display:block;margin-bottom:6px;color:#222;}
       .smp-summary p{margin:0;line-height:1.65;color:#333;}
@@ -508,57 +463,14 @@
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [10] 이벤트 연결
-     ───────────────────────────────────────────────────────────────────────
-     ▸ i18n.js가 만든 #smp-analyze 버튼이 있으면 그쪽에 연결
-     ▸ 없다면 페이지에 이미 있는 "AI 분석 실행" 등의 버튼을 텍스트로 찾아 연결
-     ▸ 어느 쪽이든 textarea의 값을 받아 analyze() 호출 후 renderResult()
-     ─────────────────────────────────────────────────────────────────────── */
-  function findLegacyAnalyzeButton() {
-    const candidates = Array.from(document.querySelectorAll("button, a, [role='button']"));
-    return candidates.find((el) => /AI\s*분석|分析|analysis|analyze/i.test(el.textContent || ""));
-  }
-
-  function findInputArea() {
-    return document.getElementById("smp-input")
-        || document.querySelector("textarea[data-analyze]")
-        || document.querySelector("textarea");
-  }
-
-  function bindAnalyzeButton() {
-    const input     = findInputArea();
-    const newBtn    = document.getElementById("smp-analyze");
-    const legacyBtn = findLegacyAnalyzeButton();
-
-    const handler = () => {
-      const text = (input && input.value) || "";
-      const box  = getResultBox();
-
-      if (!text.trim()) {
-        box.innerHTML = `<p style="color:#888;">— No input —</p>`;
-        box.hidden = false;
-        return;
-      }
-
-      // 짧은 지연으로 "분석 중" UI를 보여줘 실제 AI 느낌 강화
-      box.innerHTML = `<p style="color:#888;">… analyzing …</p>`;
-      box.hidden = false;
-      setTimeout(() => {
-        const r = analyze(text);
-        if (r) renderResult(r);
-      }, 300);
-    };
-
-    if (newBtn)                              newBtn.addEventListener("click", handler);
-    if (legacyBtn && legacyBtn !== newBtn)   legacyBtn.addEventListener("click", handler);
-  }
-
-  /* ───────────────────────────────────────────────────────────────────────
-     [11] 부팅
+     [9] 부팅
+         - 기존 "AI 분석 실행" 버튼을 찾아 클릭 핸들러 부착
+         - 기존 핸들러가 있더라도 덮어쓰지 않고 추가만 함 (capture 단계 X)
      ─────────────────────────────────────────────────────────────────────── */
   function boot() {
     injectStyles();
-    bindAnalyzeButton();
+    const btn = findAnalyzeButton();
+    if (btn) btn.addEventListener("click", runAnalysis);
   }
 
   if (document.readyState === "loading") {
@@ -568,45 +480,15 @@
   }
 
   /* ───────────────────────────────────────────────────────────────────────
-     [12] 외부 노출 — 콘솔 테스트 및 다른 스크립트와의 협업용
+     [10] 외부 노출
+          콘솔에서 직접 테스트 가능:
+            SMP_AI.analyzeNarrative("이것은 임진왜란에 관한 글이다")
+            SMP_AI.analyzeNarrative("これは出兵についての記述である")
+            SMP_AI.analyzeNarrative("This is a passage about the invasion.")
      ─────────────────────────────────────────────────────────────────────── */
   window.SMP_AI = {
     detectLanguage,
-    analyze,
-    render: renderResult,
+    analyzeNarrative,
+    runAnalysis,
   };
 })();
-((page) => {
-    page.classList.remove("active");
-  });
-
-  const nextPage = document.querySelector(
-    `.page[data-page-name="${pageName}"]`
-  );
-
-  if (nextPage) {
-    nextPage.classList.add("active");
-    window.scrollTo(0, 0);
-  }
-});
-document.addEventListener("click", (e) => {
-  const target = e.target.closest("[data-page]");
-  if (!target) return;
-
-  e.preventDefault();
-
-  const pageName = target.dataset.page;
-
-  document.querySelectorAll(".page").forEach((page) => {
-    page.classList.remove("active");
-  });
-
-  const nextPage = document.querySelector(
-    `.page[data-page-name="${pageName}"]`
-  );
-
-  if (nextPage) {
-    nextPage.classList.add("active");
-    window.scrollTo(0, 0);
-  }
-});
