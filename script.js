@@ -565,8 +565,87 @@ function runAIAnalysis() {
           <li>"공동 표현 작성" 탭에서 직접 중립적 서술을 제안해 보세요.</li>
         </ul>
       </div>
+
+      ${renderMultilingualSection()}
     `;
   }, 1500);
+}
+
+/**
+ * [확장 기능] AI 분석 결과에 덧붙는 "사용자 다국어 입력 분석" 섹션 생성
+ * - 사용자가 한·일·영 어떤 언어로 공동 표현을 작성했든
+ *   언어별 통계와 공통 키워드를 비교 분석합니다.
+ * - 기존 .ai-result__section 클래스를 그대로 재사용해
+ *   디자인의 일관성을 유지합니다.
+ */
+function renderMultilingualSection() {
+  const result = runMultilingualAnalysis();
+
+  // 등록된 사용자 입력이 없는 경우 안내 메시지만 표시
+  if (result.empty) {
+    return `
+      <div class="ai-result__section">
+        <div class="ai-result__heading">
+          <span>🌐</span>
+          <span>5. 다국어 공동 표현 분석</span>
+        </div>
+        <ul class="ai-result__list">
+          <li>${result.message}</li>
+        </ul>
+      </div>
+    `;
+  }
+
+  // 언어별 통계 HTML 만들기
+  const langOrder = ['ko', 'ja', 'en'];
+  const statRows = langOrder.map(lang => {
+    const s = result.stats[lang];
+    const badge = getLangBadge(lang);
+    if (!s) {
+      return `<li>${badge.flag} ${badge.label} — 입력 없음</li>`;
+    }
+    // 감정 분포 → 가장 많이 등장한 카테고리 찾기
+    const e = s.emotion;
+    const dominant = e.negative > e.positive && e.negative > e.neutral ? '부정·갈등 어휘 우세'
+                   : e.positive > e.negative && e.positive > e.neutral ? '긍정·화해 어휘 우세'
+                   : e.neutral > 0 ? '중립·사실 어휘 우세'
+                   : '감정 어휘 미검출';
+    return `
+      <li>
+        ${badge.flag} ${badge.label} —
+        제안 ${s.count}건, 평균 ${s.avgLen}자,
+        <strong style="color: var(--accent);">${dominant}</strong>
+        (부정 ${e.negative} · 중립 ${e.neutral} · 긍정 ${e.positive})
+      </li>
+    `;
+  }).join('');
+
+  // 다국어를 가로지르는 공통 키워드
+  const commonKwHtml = result.commonHits.length > 0
+    ? result.commonHits.map(k => `<li>"${k.keyword}" — ${k.count}건의 제안에서 등장</li>`).join('')
+    : '<li>아직 사건 표준 키워드와 일치하는 표현이 충분히 등장하지 않았습니다.</li>';
+
+  return `
+    <div class="ai-result__section">
+      <div class="ai-result__heading">
+        <span>🌐</span>
+        <span>5. 다국어 공동 표현 분석 (총 ${result.totalCount}건)</span>
+      </div>
+      <ul class="ai-result__list">
+        ${statRows}
+      </ul>
+    </div>
+
+    <div class="ai-result__section">
+      <div class="ai-result__heading">
+        <span>🔗</span>
+        <span>6. 언어를 가로지르는 공통 키워드</span>
+      </div>
+      <ul class="ai-result__list">
+        ${commonKwHtml}
+      </ul>
+    </div>
+  `;
 }
 
 
@@ -636,13 +715,18 @@ function submitSharedNarrative() {
     return;
   }
 
-  // 저장
+  // [확장] 입력 텍스트의 언어 자동 감지
+  const detectedLang = detectLanguage(text);
+
+  // 저장 (lang, translationOpen 필드 추가)
   sharedNarratives.unshift({
     user: name,
     text: text,
     reason: reason,
     date: new Date().toLocaleDateString('ko-KR'),
-    eventId: currentEventId
+    eventId: currentEventId,
+    lang: detectedLang,        // ← 감지된 언어 코드 ('ko' | 'ja' | 'en' | 'unknown')
+    translationOpen: false     // ← '번역 보기'가 열려있는지 여부
   });
 
   // 입력창 비우기
@@ -659,27 +743,94 @@ function renderSharedList() {
   if (!list) return;
 
   // 현재 사건에 해당하는 제안만 필터링
-  const items = sharedNarratives.filter(s => s.eventId === currentEventId);
+  // (인덱스 보존을 위해 원본 배열의 인덱스를 함께 들고 다닙니다)
+  const items = sharedNarratives
+    .map((item, idx) => ({ item, idx }))
+    .filter(pair => pair.item.eventId === currentEventId);
 
   if (items.length === 0) {
     list.innerHTML = `<div class="shared-empty">아직 등록된 제안이 없습니다. 첫 번째 제안을 작성해 보세요!</div>`;
     return;
   }
 
-  list.innerHTML = items.map(item => `
-    <div class="shared-item">
-      <div class="shared-item__header">
-        <div class="shared-item__user">${escapeHtml(item.user)}</div>
-        <div class="shared-item__date">${item.date}</div>
-      </div>
-      <div class="shared-item__text">"${escapeHtml(item.text)}"</div>
-      ${item.reason ? `
-        <div class="shared-item__reason">
-          <strong>작성 이유:</strong>${escapeHtml(item.reason)}
+  list.innerHTML = items.map(({ item, idx }) => {
+    // [확장] 언어 배지 만들기
+    const badge = getLangBadge(item.lang || 'unknown');
+    const badgeHtml = `
+      <span class="narrative-card__keyword" style="font-size: 0.72rem;">
+        ${badge.flag} ${badge.label}
+      </span>
+    `;
+
+    // [확장] 번역 영역: 열려있을 때만 렌더링
+    let translationHtml = '';
+    if (item.translationOpen) {
+      const trans = buildTranslation(item);
+      if (trans) {
+        // 입력 언어 외의 두 언어로 번역 결과를 보여줌
+        const translatedRows = Object.entries(trans).map(([lang, txt]) => {
+          const b = getLangBadge(lang);
+          return `
+            <div style="margin-top: 0.6rem;">
+              <span class="narrative-card__keyword" style="font-size: 0.7rem;">${b.flag} ${b.label}</span>
+              <div style="margin-top: 0.4rem; font-size: 0.88rem; color: var(--ink-soft); line-height: 1.7;">
+                ${escapeHtml(txt)}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        translationHtml = `
+          <div class="shared-item__reason">
+            <strong>참고 번역:</strong>
+            ${translatedRows}
+            <div style="margin-top: 0.6rem; font-size: 0.75rem; color: var(--ink-mute);">
+              ※ 본 번역은 학습용 예시 매핑이며, 실제 자동 번역 API를 대체할 자리입니다.
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // 번역 보기 버튼 텍스트 (열림/닫힘에 따라 변경)
+    const toggleText = item.translationOpen ? '번역 닫기' : '번역 보기';
+
+    return `
+      <div class="shared-item">
+        <div class="shared-item__header">
+          <div class="shared-item__user">
+            ${escapeHtml(item.user)}
+            ${badgeHtml}
+          </div>
+          <div class="shared-item__date">${item.date}</div>
         </div>
-      ` : ''}
-    </div>
-  `).join('');
+        <div class="shared-item__text">"${escapeHtml(item.text)}"</div>
+        ${item.reason ? `
+          <div class="shared-item__reason">
+            <strong>작성 이유:</strong>${escapeHtml(item.reason)}
+          </div>
+        ` : ''}
+
+        <!-- [확장] 번역 보기 버튼: 기존 폼 input의 옅은 베이지 톤을 그대로 활용 -->
+        <button
+          class="narrative-card__keyword"
+          style="margin-top: 0.9rem; cursor: pointer; border: 1px solid var(--line); background: white;"
+          data-translate-index="${idx}">
+          🌐 ${toggleText}
+        </button>
+
+        ${translationHtml}
+      </div>
+    `;
+  }).join('');
+
+  // [확장] 번역 보기 버튼에 이벤트 등록 (동적 생성된 버튼이므로 매번 새로 바인딩)
+  list.querySelectorAll('[data-translate-index]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.translateIndex, 10);
+      toggleTranslation(i);
+    });
+  });
 }
 
 // XSS 방지용 (사용자가 <script> 같은 걸 입력해도 그냥 글자로 표시)
@@ -687,6 +838,318 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+
+/* ============================================================
+   🌐 [확장 기능] 10. 언어 자동 감지
+   ============================================================
+   원리: 유니코드(Unicode) 문자 범위로 언어를 식별합니다.
+
+   각 언어는 고유한 유니코드 영역을 가지고 있어요:
+   - 한글:     U+AC00 ~ U+D7A3 (가 ~ 힣) → 정규식 [가-힣]
+   - 히라가나: U+3040 ~ U+309F (あ ~ ん)  → 정규식 [\u3040-\u309F]
+   - 가타카나: U+30A0 ~ U+30FF (ア ~ ン)  → 정규식 [\u30A0-\u30FF]
+   - 한자:    U+4E00 ~ U+9FFF (一 ~ 龥)  → 정규식 [\u4E00-\u9FFF]
+
+   판별 우선순위:
+   1) 한글이 있으면 → 한국어 (한자와 섞여도 한국어로 판단)
+   2) 히라가나/가타카나가 있으면 → 일본어 (가나는 일본 고유)
+   3) 한자만 있으면 → 중국어로 분류 (단, 본 플랫폼은 한·일·영만 입력받음)
+   4) 알파벳이 있으면 → 영어
+   5) 그 외 → 'unknown'
+
+   ※ 한자는 한·중·일 모두 사용하므로 단독으로는 언어 판별이 어렵습니다.
+     따라서 한글/가나의 유무를 우선 검사합니다.
+*/
+function detectLanguage(text) {
+  if (!text || !text.trim()) return 'unknown';
+
+  // 1) 한글 정규식
+  const hangulRegex = /[가-힣]/;
+  // 2) 일본어 가나 정규식 (히라가나 + 가타카나)
+  const kanaRegex = /[\u3040-\u309F\u30A0-\u30FF]/;
+  // 3) 영문자 정규식
+  const latinRegex = /[A-Za-z]/;
+
+  if (hangulRegex.test(text)) return 'ko';   // 한국어
+  if (kanaRegex.test(text))   return 'ja';   // 일본어
+  if (latinRegex.test(text))  return 'en';   // 영어
+
+  return 'unknown';
+}
+
+/**
+ * 언어 코드 → 배지 정보 변환
+ * 디자인을 해치지 않도록 기존 .narrative-card__keyword 와 유사한
+ * 작은 태그 스타일로 표시할 때 사용합니다.
+ */
+function getLangBadge(code) {
+  const map = {
+    'ko':      { flag: '🇰🇷', label: '한국어' },
+    'ja':      { flag: '🇯🇵', label: '日本語' },
+    'en':      { flag: '🇺🇸', label: 'English' },
+    'unknown': { flag: '🌐', label: '미식별' }
+  };
+  return map[code] || map['unknown'];
+}
+
+
+/* ============================================================
+   🔁 [확장 기능] 11. 번역 보조 기능 (예시 매핑)
+   ============================================================
+   실제 번역 API(Papago, DeepL, Google) 없이 작동시키기 위해,
+   "사건별 + 언어별" 대표 표현을 사전에 매핑해 둡니다.
+
+   구조:
+     translationSamples[eventId][srcLang] = {
+       ko: '한국어 번역',
+       ja: '일본어 번역',
+       en: '영어 번역'
+     }
+
+   사용자의 입력이 정확히 원문과 일치하지 않을 경우,
+   해당 언어의 "대표 예시 번역"을 보여주는 방식으로 동작합니다.
+   → 실제 서비스라면 외부 번역 API 연결 자리.
+*/
+const translationSamples = {
+  'imjin': {
+    ko: {
+      ja: '1592年から始まった日本軍の朝鮮半島侵攻と、それに対する朝鮮・明連合軍の7年間の戦争。',
+      en: 'A seven-year war beginning in 1592, marked by the Japanese invasion of the Korean peninsula and the resistance of the Joseon-Ming allied forces.'
+    },
+    ja: {
+      ko: '1592년에 시작된 두 차례의 대륙 출병으로, 도요토미 히데요시의 대륙 진출 정책의 결과였다.',
+      en: 'Two military campaigns launched in 1592, resulting from Toyotomi Hideyoshi\'s continental expansion policy.'
+    },
+    en: {
+      ko: '1592년부터 1598년까지 동북아 삼국이 모두 관여한 국제 전쟁으로, 막대한 인적·물적 피해를 남겼다.',
+      ja: '1592年から1598年まで東アジア三国すべてが関与した国際戦争で、莫大な人的・物的被害を残した。'
+    }
+  },
+  'culture': {
+    ko: {
+      ja: '韓・中・日三国は1500年以上にわたって文字・宗教・技術を相互に交流させ、東アジア共通の文化的基盤を形成した。',
+      en: 'Korea, China, and Japan exchanged scripts, religions, and technologies for over 1,500 years, forming a shared East Asian cultural foundation.'
+    },
+    ja: {
+      ko: '동아시아 삼국은 한자·불교·유교 등을 상호 변용하며 각자의 독자적 문화를 발전시켰다.',
+      en: 'The three East Asian nations adapted Chinese characters, Buddhism, and Confucianism in their own ways, developing distinctive cultures.'
+    },
+    en: {
+      ko: '동북아 문화 교류는 단방향이 아닌 다방향의 흐름이었으며, 세 국가 모두 발신자이자 수용자였다.',
+      ja: '東アジアの文化交流は一方向ではなく多方向の流れであり、三国すべてが発信者であり受容者でもあった。'
+    }
+  },
+  'tribute': {
+    ko: {
+      ja: '東アジアの朝貢体制は単なる支配-従属関係ではなく、儀礼的・文化的・経済的な複合的国際秩序であった。',
+      en: 'The East Asian tributary system was not merely a hierarchy of dominance but a complex international order combining ritual, culture, and trade.'
+    },
+    ja: {
+      ko: '동아시아 조공 체제는 의례·문화·경제가 결합된 복합적 국제 질서였다.',
+      en: 'The East Asian tributary system was a multi-layered international order encompassing ritual, culture, and commerce.'
+    },
+    en: {
+      ko: '조공 관계는 19세기 서구 충격으로 붕괴되기 전까지 천 년 이상 동아시아 국제 질서의 기본 틀이었다.',
+      ja: '朝貢関係は19世紀の西欧の衝撃で崩壊するまで、千年以上にわたり東アジア国際秩序の基本枠組みであった。'
+    }
+  },
+  'modern': {
+    ko: {
+      ja: '19世紀後半、東アジア三国はそれぞれ異なる経路で近代化を試み、その結果も大きく分岐した。',
+      en: 'In the late 19th century, the three East Asian nations pursued modernization along divergent paths, with starkly different outcomes.'
+    },
+    ja: {
+      ko: '19세기 후반 동아시아 삼국은 각기 다른 경로로 근대화를 시도했고, 그 결과 또한 크게 갈렸다.',
+      en: 'Each of the three East Asian states attempted modernization through different paths in the late 19th century, leading to divergent results.'
+    },
+    en: {
+      ko: '근대화 과정은 한국에게는 좌절, 일본에게는 성공, 중국에게는 치욕으로 각기 다르게 기억된다.',
+      ja: '近代化の過程は、韓国には挫折、日本には成功、中国には屈辱として、それぞれ異なって記憶されている。'
+    }
+  },
+  'dokdo': {
+    ko: {
+      ja: '独島/竹島は現在も韓日両国が領有権を主張する島であり、それぞれ歴史的・国際法的根拠を提示している。',
+      en: 'Dokdo/Takeshima remains a contested island, with both Korea and Japan presenting historical and international-legal claims.'
+    },
+    ja: {
+      ko: '독도/다케시마는 한일 양국이 영유권을 주장하는 섬으로, 명칭 선택 자체가 입장의 표명이 된다.',
+      en: 'Dokdo/Takeshima is contested by Korea and Japan, where even the choice of name signals one\'s position.'
+    },
+    en: {
+      ko: '독도 영토 문제는 단순한 영유권 분쟁이 아니라 근대사 인식 차이가 응축된 상징적 쟁점이다.',
+      ja: '独島領土問題は単なる領有権紛争ではなく、近代史認識の差異が凝縮された象徴的争点である。'
+    }
+  }
+};
+
+/**
+ * 번역 보기 토글
+ * 카드에 붙은 "번역 보기" 버튼이 누르면 호출됩니다.
+ * @param {number} index - sharedNarratives 배열 안의 위치
+ */
+function toggleTranslation(index) {
+  const item = sharedNarratives[index];
+  if (!item) return;
+
+  // 이미 번역이 표시되어 있으면 숨기기 (토글)
+  item.translationOpen = !item.translationOpen;
+  renderSharedList();
+}
+
+/**
+ * 입력 언어에 따라 어떤 언어로 번역해 보여줄지 결정
+ * 규칙: 한국어 입력 → 일본어 + 영어
+ *      일본어 입력 → 한국어 + 영어
+ *      영어 입력   → 한국어 + 일본어
+ *      미식별      → 한국어 예시
+ */
+function buildTranslation(item) {
+  const samples = translationSamples[item.eventId];
+  if (!samples) return null;
+
+  const src = item.lang;
+  const srcKey = (src === 'ko' || src === 'ja' || src === 'en') ? src : 'ko';
+  const map = samples[srcKey];
+  if (!map) return null;
+
+  // 결과: { 언어코드: 번역문 } 형태로 반환
+  const result = {};
+  Object.keys(map).forEach(targetLang => {
+    result[targetLang] = map[targetLang];
+  });
+  return result;
+}
+
+
+/* ============================================================
+   🤖 [확장 기능] 12. 다국어 공동 표현 AI 분석
+   ============================================================
+   기존 AI 분석은 "한·중·일 교과서 서술"을 비교했지만,
+   이 새 기능은 "사용자들이 직접 작성한 공동 표현"을 언어별로 비교합니다.
+
+   분석 절차 (학습용 단순화):
+   ① 언어별로 분류 (이미 detectLanguage로 표시되어 있음)
+   ② 평균 길이 비교 → 어느 언어가 더 함축적/서술적인가
+   ③ 공통 키워드 추출 → 다국어를 가로지르는 공통 어휘
+   ④ 감정 표현 사전(emotionLex) 기반 분류 → 어조 차이 도출
+   ⑤ 종합 결론 출력
+*/
+
+// 감정·평가 어휘 사전 (각 언어별 대표 표현)
+// 실제 NLP에서는 이런 사전을 "감성 어휘 사전(Sentiment Lexicon)"이라 부릅니다.
+const emotionLex = {
+  // 부정·갈등 어휘
+  negative: {
+    ko: ['침략', '치욕', '굴종', '비극', '좌절', '불법', '강제', '왜곡'],
+    ja: ['侵略', '屈辱', '挫折', '不法', '強制', '悲劇'],
+    en: ['invasion', 'humiliation', 'illegal', 'forced', 'tragedy', 'aggression']
+  },
+  // 중립·사실 어휘
+  neutral: {
+    ko: ['전쟁', '출병', '진출', '교류', '관계', '제도', '편입', '시기'],
+    ja: ['戦争', '出兵', '進出', '交流', '関係', '制度'],
+    en: ['war', 'campaign', 'exchange', 'relation', 'system', 'period']
+  },
+  // 긍정·화해 어휘
+  positive: {
+    ko: ['공동', '평화', '협력', '화해', '대화', '이해', '공존', '상호'],
+    ja: ['共同', '平和', '協力', '和解', '対話', '理解'],
+    en: ['shared', 'peace', 'cooperation', 'reconciliation', 'dialogue', 'mutual']
+  }
+};
+
+/**
+ * 텍스트의 감정 분포 계산
+ * 사전에 등록된 단어가 텍스트에 몇 번 등장하는지 세어서
+ * { negative: n, neutral: n, positive: n } 형태로 반환합니다.
+ */
+function analyzeEmotion(text, lang) {
+  const counts = { negative: 0, neutral: 0, positive: 0 };
+  if (lang === 'unknown') return counts;
+
+  ['negative', 'neutral', 'positive'].forEach(category => {
+    const words = emotionLex[category][lang] || [];
+    words.forEach(word => {
+      let count;
+      if (lang === 'en') {
+        // 영어는 단어 경계(\b)를 적용해 부분 일치 방지
+        const re = new RegExp('\\b' + word + '\\b', 'gi');
+        count = (text.match(re) || []).length;
+      } else {
+        // 한국어/일본어는 그대로 substring 검색
+        count = text.split(word).length - 1;
+      }
+      counts[category] += count;
+    });
+  });
+  return counts;
+}
+
+/**
+ * 다국어 공동 표현 분석 메인 함수
+ * 현재 사건(currentEventId)에 등록된 모든 사용자 입력을 분석합니다.
+ */
+function runMultilingualAnalysis() {
+  const items = sharedNarratives.filter(s => s.eventId === currentEventId);
+
+  if (items.length === 0) {
+    return {
+      empty: true,
+      message: '아직 등록된 공동 표현 제안이 없습니다. "공동 표현 작성" 탭에서 먼저 한·일·영 어떤 언어로든 표현을 등록해 주세요.'
+    };
+  }
+
+  // 1) 언어별로 분류
+  const byLang = { ko: [], ja: [], en: [], unknown: [] };
+  items.forEach(it => {
+    const arr = byLang[it.lang] || byLang.unknown;
+    arr.push(it);
+  });
+
+  // 2) 언어별 통계
+  const stats = {};
+  ['ko', 'ja', 'en'].forEach(lang => {
+    const arr = byLang[lang];
+    if (arr.length === 0) { stats[lang] = null; return; }
+
+    const avgLen = Math.round(
+      arr.reduce((sum, x) => sum + x.text.length, 0) / arr.length
+    );
+
+    const emotion = { negative: 0, neutral: 0, positive: 0 };
+    arr.forEach(x => {
+      const e = analyzeEmotion(x.text, lang);
+      emotion.negative += e.negative;
+      emotion.neutral  += e.neutral;
+      emotion.positive += e.positive;
+    });
+
+    stats[lang] = { count: arr.length, avgLen, emotion };
+  });
+
+  // 3) 공통 키워드 추출 (사건별 표준 어휘와 사용자 입력의 교집합)
+  const event = eventsData.find(e => e.id === currentEventId);
+  const allKeywords = [
+    ...event.korea.keywords,
+    ...event.japan.keywords,
+    ...event.china.keywords
+  ];
+  const commonHits = [];
+  allKeywords.forEach(kw => {
+    const hits = items.filter(it => it.text.includes(kw)).length;
+    if (hits > 0) commonHits.push({ keyword: kw, count: hits });
+  });
+  commonHits.sort((a, b) => b.count - a.count);
+
+  return {
+    empty: false,
+    totalCount: items.length,
+    stats,
+    commonHits: commonHits.slice(0, 6)
+  };
 }
 
 
