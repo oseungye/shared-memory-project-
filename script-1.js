@@ -584,6 +584,14 @@ document.addEventListener("click", (e) => {
 
   const pageName = target.dataset.page;
 
+  document.addEventListener("click", (e) => {
+  const target = e.target.closest("[data-page]");
+  if (!target) return;
+
+  e.preventDefault();
+
+  const pageName = target.dataset.page;
+
   document.querySelectorAll(".page").forEach((page) => {
     page.classList.remove("active");
   });
