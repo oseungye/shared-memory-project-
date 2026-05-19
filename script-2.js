@@ -225,3 +225,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   updateLanguage(savedLanguage);
 });
+document.addEventListener("click", (e) => {
+  const target = e.target.closest("[data-page]");
+  if (!target) return;
+
+  e.preventDefault();
+
+  const pageName = target.dataset.page;
+
+  document.querySelectorAll(".page").forEach((page) => {
+    page.classList.remove("active");
+  });
+
+  const nextPage = document.querySelector(
+    `.page[data-page-name="${pageName}"]`
+  );
+
+  if (nextPage) {
+    nextPage.classList.add("active");
+    window.scrollTo(0, 0);
+  }
+});
