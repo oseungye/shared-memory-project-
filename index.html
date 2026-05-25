@@ -1,54 +1,50 @@
 <!DOCTYPE html>
 <!--
   ============================================================
-  Shared Memory Project — 동북아 역사 서술 비교 플랫폼
+  Shared Memory Project ／ 共有記憶プロジェクト
+  東アジア歴史対話プラットフォーム
   ============================================================
-  파일 구성:
-    - index.html : 페이지 구조(HTML)
-    - style.css  : 디자인/레이아웃(CSS)
-    - script.js  : 동작/데이터(JavaScript)
+  ファイル構成 (파일 구성):
+    - index.html : ページ構造 (페이지 뼈대)
+    - style.css  : デザイン (디자인)
+    - script.js  : 動作・データ (동작/데이터)
 
-  이 파일은 SPA(Single Page Application) 구조입니다.
-  실제로는 페이지 이동이 아니라, 같은 HTML 안의 여러 <section>을
-  JavaScript가 보여줬다/숨겼다 하는 방식으로 동작합니다.
-  → 서버 없이도 작동하므로 GitHub Pages 등에 그대로 배포 가능합니다.
+  SPA(シングルページ)方式: 複数の<section>をJSが切り替えます。
+  サーバー不要 → GitHub Pagesにそのまま配置可能。
 -->
-<html lang="ko">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shared Memory Project — 동북아 역사 공동 기억 프로젝트</title>
-  <meta name="description" content="한국·일본·중국의 역사 서술을 비교하고, 공동 표현 가능성을 탐구하는 디지털 인문학 플랫폼" />
+  <title>Shared Memory Project ｜ 東アジア歴史対話プラットフォーム</title>
+  <meta name="description" content="韓国・日本・中国の歴史叙述を比較し、対話と共存の可能性を探るデジタル人文学アーカイブ" />
 
-  <!-- 한글 + 영문 모두 어울리는 서체 (Google Fonts) -->
+  <!-- 日本式の品格ある明朝体 + 現代的なゴシック体の組み合わせ -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;700;900&family=Noto+Sans+KR:wght@300;400;500;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700;800&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="style.css" />
 </head>
-<script src="i18n.js" defer></script><script src="script.js" defer></script>
-<script src="i18n.js"   defer></script><body>
+<body>
 
   <!-- ============================================================
-       상단 네비게이션 바
+       上部ナビゲーション (상단 내비게이션)
        ============================================================ -->
   <header class="nav">
     <div class="nav__inner">
-      <!-- 로고: 클릭하면 메인 페이지로 -->
       <a href="#" class="nav__logo" data-page="home">
-        <span class="nav__logo-mark">共</span>
+        <span class="nav__logo-mark">記</span>
         <span class="nav__logo-text">
-          <strong>Shared Memory</strong>
-          <em>공동 기억 프로젝트</em>
+          <strong>Shared Memory Project</strong>
+          <em>東アジア歴史対話プラットフォーム</em>
         </span>
       </a>
 
-      <!-- 네비게이션 메뉴: data-page 속성으로 어떤 페이지로 갈지 표시 -->
       <nav class="nav__menu">
-        <a href="#" data-page="home">소개</a>
-        <a href="#" data-page="events">사건 선택</a>
-        <a href="#" data-page="about">탐구 의의</a>
+        <a href="#" data-page="home">ホーム</a>
+        <a href="#" data-page="events">歴史事件</a>
+        <a href="#" data-page="about">探究の意義</a>
       </nav>
     </div>
   </header>
@@ -56,39 +52,39 @@
   <main>
 
     <!-- ============================================================
-         1. 메인(홈) 페이지
+         1. メインページ (메인 페이지)
          ============================================================ -->
     <section class="page page--home active" data-page-name="home">
 
-      <!-- 히어로 영역 -->
       <div class="hero">
-        <!-- 배경 장식: 동북아 지도 SVG (style.css에서 위치 조정) -->
+        <!-- 背景装飾: 東アジア地図の抽象SVG -->
         <div class="hero__map" aria-hidden="true">
           <svg viewBox="0 0 600 500" xmlns="http://www.w3.org/2000/svg">
-            <!-- 중국 (단순화된 형태) -->
+            <!-- 中国 -->
             <path class="map__china" d="M50,180 Q80,140 130,150 Q200,130 250,170 Q280,220 260,280 Q220,320 180,310 Q120,300 80,260 Q40,220 50,180 Z" />
-            <!-- 한국 (한반도) -->
+            <!-- 韓国(韓半島) -->
             <path class="map__korea" d="M310,160 Q320,150 330,170 Q340,200 335,240 Q330,275 320,290 Q310,300 305,285 Q298,250 302,210 Q305,180 310,160 Z" />
-            <!-- 일본 (열도) -->
+            <!-- 日本(列島) -->
             <path class="map__japan" d="M380,200 Q395,180 410,200 Q425,230 420,260 Q435,275 450,300 Q460,320 445,330 Q420,325 405,310 Q395,290 388,270 Q375,240 380,200 Z" />
           </svg>
         </div>
 
         <div class="hero__content">
-          <!-- 메인 카피: 한자/한글 조합으로 동북아 느낌 -->
-          <p class="hero__eyebrow">記憶 · 記憶 · 记忆</p>
+          <p class="hero__eyebrow">記憶 ・ 対話 ・ 共存</p>
           <h1 class="hero__title">
-            <span class="hero__title-line">동일한 역사도</span>
-            <span class="hero__title-line hero__title-line--accent">국가마다 다르게 기억된다.</span>
+            <span class="hero__title-line">同じ歴史も、</span>
+            <span class="hero__title-line hero__title-line--accent">国によって異なる記憶として語られる。</span>
           </h1>
+          <!-- 韓国語の補助文 (한국어 보조 문구) -->
+          <p class="hero__subtitle-ko">동일한 역사도 국가마다 다르게 기억된다.</p>
+
           <p class="hero__subtitle">
-            한국·일본·중국의 역사 서술을 나란히 놓고 비교합니다.<br />
-            그 차이를 인정하는 것에서 공동의 기억이 시작됩니다.
+            韓国・日本・中国の歴史叙述を並べて比較します。<br />
+            その違いを認めることから、共有された記憶への対話が始まります。
           </p>
 
-          <!-- 시작하기 버튼: 클릭하면 사건 선택 페이지로 이동 -->
           <button class="btn btn--primary" data-page="events">
-            <span>탐구 시작하기</span>
+            <span>はじめる</span>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <path d="M4 10h12m0 0l-4-4m4 4l-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -96,155 +92,149 @@
         </div>
       </div>
 
-      <!-- 프로젝트 소개 3개 카드 -->
+      <!-- プロジェクト紹介 3カード -->
       <div class="intro">
         <div class="intro__grid">
           <div class="intro__card">
-            <div class="intro__num">01</div>
-            <h3>왜 비교하는가</h3>
-            <p>같은 사건이 한국에서는 '왜란', 일본에서는 '出兵', 중국에서는 '抗倭援朝'로 불립니다. 단어 하나에 담긴 시선의 차이를 분석합니다.</p>
+            <div class="intro__num">壱</div>
+            <h3>なぜ比較するのか</h3>
+            <p>同じ出来事が韓国では「侵略」、日本では「出兵」、中国では「抗倭援朝」と呼ばれます。一つの言葉に込められた視点の違いを分析します。<span class="ko-note">왜 비교하는가 — 어휘 하나에 담긴 시선의 차이</span></p>
           </div>
           <div class="intro__card">
-            <div class="intro__num">02</div>
-            <h3>무엇을 다루는가</h3>
-            <p>임진왜란부터 독도 문제까지, 동북아 역사 인식 갈등의 핵심 사건 5가지를 국가별 서술과 함께 살펴봅니다.</p>
+            <div class="intro__num">弐</div>
+            <h3>何を扱うのか</h3>
+            <p>文禄・慶長の役から在日朝鮮人の歩み、ヒロシマの被爆の記憶、そして多文化共生まで、東アジアの歴史認識と記憶をめぐる主題を扱います。<span class="ko-note">무엇을 다루는가 — 갈등을 넘어 평화·공생까지</span></p>
           </div>
           <div class="intro__card">
-            <div class="intro__num">03</div>
-            <h3>어떻게 나아가는가</h3>
-            <p>AI 분석으로 공통점과 차이점을 도출하고, 사용자가 직접 '공동 표현'을 제안하며 미래의 서술을 함께 만들어 봅니다.</p>
+            <div class="intro__num">参</div>
+            <h3>どこへ向かうのか</h3>
+            <p>AI分析で共通点と相違点を導き、利用者自身が「共同表現」を提案しながら、未来志向の対話の場を共につくります。<span class="ko-note">어디로 나아가는가 — 미래지향적 대화의 장</span></p>
           </div>
         </div>
       </div>
     </section>
 
     <!-- ============================================================
-         2. 역사 사건 선택 페이지
+         2. 歴史事件選択ページ (역사 사건 선택)
          ============================================================ -->
     <section class="page page--events" data-page-name="events">
       <div class="page__header">
         <p class="page__eyebrow">STEP 01</p>
-        <h2 class="page__title">탐구할 역사 사건 선택</h2>
-        <p class="page__desc">아래 5개의 사건은 한·중·일 역사 인식 차이가 가장 뚜렷하게 드러나는 주제입니다.<br />카드를 클릭하면 국가별 서술을 비교할 수 있습니다.</p>
+        <h2 class="page__title">探究する歴史事件を選ぶ</h2>
+        <p class="page__desc">以下のテーマは、韓・日・中の歴史認識の違いが最も鮮明に現れる主題です。<br />カードをクリックすると、国別の叙述を比較できます。</p>
+        <p class="page__desc-ko">탐구할 역사 사건을 선택하세요 — 카드를 클릭하면 국가별 서술을 비교할 수 있습니다.</p>
       </div>
 
-      <!-- 사건 카드 컨테이너: script.js에서 자바스크립트로 동적 생성 -->
-      <div class="events-grid" id="eventsGrid">
-        <!-- JS가 채워줍니다 -->
-      </div>
+      <!-- 事件カード: script.jsが動的に生成 -->
+      <div class="events-grid" id="eventsGrid"></div>
     </section>
 
     <!-- ============================================================
-         3. 국가별 서술 비교 페이지 (사건 상세)
+         3. 国別歴史叙述比較ページ (국가별 서술 비교 / 상세)
          ============================================================ -->
     <section class="page page--detail" data-page-name="detail">
 
-      <!-- 뒤로가기 버튼 -->
       <button class="back-btn" data-page="events">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
           <path d="M16 10H4m0 0l4-4m-4 4l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>사건 목록으로</span>
+        <span>事件一覧へ戻る</span>
       </button>
 
-      <!-- 사건 제목 영역 -->
-      <div class="detail__header" id="detailHeader">
-        <!-- JS가 채워줍니다 -->
-      </div>
+      <div class="detail__header" id="detailHeader"></div>
 
-      <!-- 탭 메뉴: 비교 / AI 분석 / 키워드 / 공동 표현 -->
+      <!-- タブメニュー -->
       <div class="tabs">
-        <button class="tab active" data-tab="compare">국가별 서술</button>
-        <button class="tab" data-tab="ai">AI 분석</button>
-        <button class="tab" data-tab="keywords">키워드 비교</button>
-        <button class="tab" data-tab="shared">공동 표현 작성</button>
+        <button class="tab active" data-tab="compare">国別叙述</button>
+        <button class="tab" data-tab="ai">AI分析</button>
+        <button class="tab" data-tab="keywords">キーワード比較</button>
+        <button class="tab" data-tab="shared">共同表現の作成</button>
       </div>
 
-      <!-- 탭 1: 국가별 서술 비교 -->
+      <!-- タブ1: 国別叙述比較 -->
       <div class="tab-content active" data-tab-content="compare">
-        <div class="narratives" id="narrativesGrid">
-          <!-- JS가 한국/일본/중국 카드를 채워줍니다 -->
-        </div>
+        <div class="narratives" id="narrativesGrid"></div>
 
-        <!-- 타임라인: 사건의 흐름 -->
         <div class="timeline" id="timelineBox">
-          <h3 class="section-h">사건 타임라인</h3>
-          <div class="timeline__track" id="timelineTrack">
-            <!-- JS가 채워줍니다 -->
-          </div>
+          <h3 class="section-h">事件の年表<span class="ko-note">사건 타임라인</span></h3>
+          <div class="timeline__track" id="timelineTrack"></div>
         </div>
       </div>
 
-      <!-- 탭 2: AI 분석 -->
+      <!-- タブ2: AI分析 -->
       <div class="tab-content" data-tab-content="ai">
         <div class="ai-box">
           <div class="ai-box__intro">
-            <h3 class="section-h">AI 기반 비교 분석</h3>
-            <p>세 국가 서술의 공통점·차이점·표현 특징을 자동으로 분석합니다.<br />
-              <small>※ 본 기능은 학습용 시뮬레이션이며, 실제 자연어 처리 알고리즘의 동작 원리를 단순화한 형태로 구현되어 있습니다.</small>
+            <h3 class="section-h">AIによる比較分析<span class="ko-note">AI 비교 분석</span></h3>
+            <p>三か国の叙述の共通点・相違点・表現の特徴を自動で分析します。さらに、記憶の違い・平和の言説・多文化共生の観点からも考察します。<br />
+              <small>※ 本機能は学習用シミュレーションであり、自然言語処理の動作原理を単純化した形で実装されています。</small>
             </p>
             <button class="btn btn--ai" id="aiAnalyzeBtn">
               <span class="btn__icon">⌬</span>
-              <span>AI 분석 실행</span>
+              <span>AI分析を実行する</span>
             </button>
           </div>
-
-          <!-- 분석 결과가 들어갈 곳 -->
-          <div class="ai-result" id="aiResult">
-            <!-- 처음에는 비어있고, 버튼을 누르면 JS가 결과를 보여줌 -->
-          </div>
+          <div class="ai-result" id="aiResult"></div>
         </div>
       </div>
 
-      <!-- 탭 3: 키워드 비교 -->
+      <!-- タブ3: キーワード比較 -->
       <div class="tab-content" data-tab-content="keywords">
         <div class="keywords-box">
-          <h3 class="section-h">국가별 핵심 키워드 사용 빈도</h3>
+          <h3 class="section-h">国別キーワード使用頻度<span class="ko-note">국가별 핵심 키워드 빈도</span></h3>
           <p class="keywords-box__desc">
-            같은 사건을 설명할 때 각 국가가 어떤 단어를 더 자주 사용하는지 살펴보세요.<br />
-            단어 선택은 곧 시선의 선택이며, 역사 인식의 차이를 가장 직접적으로 드러냅니다.
+            同じ事件を説明する際、各国がどの言葉をより多く使うのかを見てみましょう。<br />
+            言葉の選択はそのまま視点の選択であり、歴史認識の違いを最も直接的に映し出します。
           </p>
-          <div class="keywords-chart" id="keywordsChart">
-            <!-- JS가 막대그래프를 그려줍니다 -->
-          </div>
+          <div class="keywords-chart" id="keywordsChart"></div>
         </div>
       </div>
 
-      <!-- 탭 4: 공동 표현 작성 -->
+      <!-- タブ4: 共同表現の作成 -->
       <div class="tab-content" data-tab-content="shared">
         <div class="shared-box">
-          <h3 class="section-h">공동 역사 서술 제안</h3>
+          <h3 class="section-h">共同歴史叙述を提案する<span class="ko-note">공동 역사 서술 제안</span></h3>
           <p class="shared-box__desc">
-            세 국가의 서술을 모두 읽었다면, 이제 당신이 제안할 차례입니다.<br />
-            중립적이고 사실에 기반한 '공동의 표현'을 작성해 보세요.
+            三か国の叙述を読んだうえで、今度はあなたが提案する番です。<br />
+            次のいずれかの観点から「共同の表現」を書いてみましょう。日本語・韓国語・英語のいずれでも入力できます。<br />
+            <span class="ko-note" style="margin-top:0.8rem;">
+              ① 中立的な歴史表現 ／ ② 相互理解のための表現 ／ ③ 未来志向の共同メッセージ ／ ④ 多文化共生につながる提案<br />
+              ① 중립적 표현 · ② 상호 이해 · ③ 미래지향 공동 메시지 · ④ 다문화 공생 제안
+            </span>
           </p>
 
-          <!-- 입력 폼 -->
           <div class="shared-form">
             <label class="shared-form__label">
-              <span class="shared-form__num">①</span> 작성자(닉네임)
+              <span class="shared-form__num">①</span> 作成者（ニックネーム）
             </label>
-            <input type="text" id="userName" class="shared-form__input" placeholder="예: 김역사" />
+            <input type="text" id="userName" class="shared-form__input" placeholder="例：歴史太郎 / 김역사 / History Hana" />
 
             <label class="shared-form__label">
-              <span class="shared-form__num">②</span> 제안하는 공동 표현
+              <span class="shared-form__num">②</span> 表現のタイプ ／ 표현 유형
             </label>
-            <textarea id="userNarrative" class="shared-form__textarea" rows="4" placeholder="공동의 역사 표현을 입력하세요 / 共同の歴史表現を入力してください / Enter a shared historical narrative"></textarea>
+            <select id="userType" class="shared-form__input">
+              <option value="中立的な歴史表現">中立的な歴史表現 ／ 중립적 표현</option>
+              <option value="相互理解のための表現">相互理解のための表現 ／ 상호 이해</option>
+              <option value="未来志向の共同メッセージ">未来志向の共同メッセージ ／ 미래지향 메시지</option>
+              <option value="多文化共生につながる提案">多文化共生につながる提案 ／ 다문화 공생 제안</option>
+            </select>
 
             <label class="shared-form__label">
-              <span class="shared-form__num">③</span> 그렇게 표현한 이유
+              <span class="shared-form__num">③</span> 共同の表現を書く ／ 공동 표현 작성
             </label>
-            <textarea id="userReason" class="shared-form__textarea" rows="3" placeholder="예: 특정 국가의 시각을 강조하지 않고, 전쟁의 국제적 성격과 공통의 피해에 초점을 맞추기 위해..."></textarea>
+            <textarea id="userNarrative" class="shared-form__textarea" rows="4" placeholder="共同の歴史表現を入力してください / 공동의 역사 표현을 입력하세요 / Enter a shared historical narrative"></textarea>
 
-            <button class="btn btn--primary" id="submitNarrative">제안 등록하기</button>
+            <label class="shared-form__label">
+              <span class="shared-form__num">④</span> そのように表現した理由 ／ 意見を入力する
+            </label>
+            <textarea id="userReason" class="shared-form__textarea" rows="3" placeholder="例：特定の国を一方的に責めるのではなく、被害と責任の双方に配慮し、共生の未来に焦点を当てるため……"></textarea>
+
+            <button class="btn btn--primary" id="submitNarrative">提案を登録する</button>
           </div>
 
-          <!-- 등록된 제안 목록 -->
           <div class="shared-list">
-            <h4 class="section-h section-h--small">등록된 공동 표현 제안</h4>
-            <div id="sharedList">
-              <!-- JS가 채워줍니다 (브라우저 메모리에만 저장) -->
-            </div>
+            <h4 class="section-h section-h--small">登録された共同表現の提案<span class="ko-note">등록된 제안</span></h4>
+            <div id="sharedList"></div>
           </div>
         </div>
       </div>
@@ -252,42 +242,42 @@
     </section>
 
     <!-- ============================================================
-         4. 탐구 의의 / 프로젝트 소개 페이지
+         4. 探究の意義 / プロジェクト紹介 (탐구 의의)
          ============================================================ -->
     <section class="page page--about" data-page-name="about">
       <div class="page__header">
         <p class="page__eyebrow">ABOUT</p>
-        <h2 class="page__title">이 프로젝트가 가지는 의미</h2>
+        <h2 class="page__title">このプロジェクトの意味</h2>
+        <p class="page__desc-ko">이 프로젝트가 가지는 의미</p>
       </div>
 
       <div class="about__grid">
         <div class="about__card">
-          <h3>📚 디지털 인문학적 접근</h3>
-          <p>전통적인 역사 교육은 단방향 전달에 머물렀습니다. 본 프로젝트는 데이터 시각화, 텍스트 분석, 사용자 참여형 콘텐츠를 결합한 <strong>디지털 인문학(Digital Humanities)</strong> 방법론을 적용해, 학습자가 능동적으로 역사 인식의 차이를 발견하도록 설계되었습니다.</p>
+          <h3>📖 デジタル人文学的アプローチ</h3>
+          <p>従来の歴史教育は一方向の伝達に留まっていました。本プロジェクトはデータ可視化・テキスト分析・参加型コンテンツを結びつけた<strong>デジタル人文学(Digital Humanities)</strong>の手法を用い、学習者が能動的に歴史認識の違いを発見できるよう設計されています。</p>
         </div>
         <div class="about__card">
-          <h3>🤝 갈등 완화의 디지털 공간</h3>
-          <p>'누가 옳은가'가 아닌 '왜 다르게 보는가'를 묻습니다. 차이를 부정하지 않고 인정하는 것이 화해의 출발점이라는 <strong>역사 화해(History Reconciliation)</strong> 이론에 기반합니다.</p>
+          <h3>🕊 対話と和解のデジタル空間</h3>
+          <p>「誰が正しいのか」ではなく「なぜ異なって見えるのか」を問います。違いを否定せず認めることが和解の出発点であるという<strong>歴史和解(Reconciliation)</strong>の理念に基づいています。戦後補償や記憶の継承の議論ともつながります。</p>
         </div>
         <div class="about__card">
-          <h3>🔍 비판적 사고의 훈련</h3>
-          <p>동일한 사실에 대한 서로 다른 표현을 분석하며, 사료의 <strong>관점성(Perspectivity)</strong>을 이해하는 훈련이 됩니다. 이는 가짜뉴스 시대에 필수적인 미디어 리터러시 능력으로 연결됩니다.</p>
+          <h3>🌏 多文化共生という視座</h3>
+          <p>在日朝鮮人の存在やヒロシマの記憶は、現代日本社会における<strong>多文化共生(多文化共生社会)</strong>と歴史認識の交差点です。本プラットフォームは過去の対立だけでなく、共に生きる未来を考える素材を提供します。</p>
         </div>
         <div class="about__card">
-          <h3>🌏 미래의 동북아 시민</h3>
-          <p>1982년 일본 교과서 파동 이후 40여 년간 한·중·일 역사 갈등은 반복되어 왔습니다. 본 플랫폼은 다음 세대가 이 문제를 <strong>대결이 아닌 대화로 풀어갈 수 있는 시민적 역량</strong>을 기르는 데 기여하고자 합니다.</p>
+          <h3>🤝 青少年の国際交流へ</h3>
+          <p>1982年の教科書問題以降、東アジアの歴史対立は繰り返されてきました。本プラットフォームは次世代がこの課題を<strong>対決ではなく対話で解く市民的力量</strong>を育てることに貢献しようとするものです。</p>
         </div>
       </div>
 
       <div class="about__footer">
-        <p>"역사는 과거와 현재의 끊임없는 대화이다." — E. H. Carr</p>
-        <p class="about__credit">Shared Memory Project · 2026 · 동북아 역사 교류 탐구 프로젝트</p>
+        <p>「歴史とは、過去と現在との尽きることのない対話である。」— E. H. カー</p>
+        <p class="about__credit">Shared Memory Project ・ 2026 ・ 東アジア歴史対話プロジェクト</p>
       </div>
     </section>
 
   </main>
 
-  <!-- 자바스크립트 파일 로드 -->
   <script src="script.js"></script>
 </body>
 </html>
