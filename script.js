@@ -929,3 +929,18 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('🎌 Shared Memory Project (日本語版) 読み込み完了');
   console.log(`📚 登録された事件: ${eventsData.length}件`);
 });
+async function testSupabaseConnection() {
+  const { data, error } = await db
+    .from("shared_expressions")
+    .select("*");
+
+  if (error) {
+    console.error("❌ Supabase 연결 실패:", error);
+    return;
+  }
+
+  console.log("✅ Supabase 연결 성공!");
+  console.log("현재 데이터:", data);
+}
+
+testSupabaseConnection();
