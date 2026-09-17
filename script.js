@@ -423,9 +423,10 @@ function openEventDetail(eventId) {
   // --- 4-5. キーワードチャート ---
   renderKeywordChart(event);
 
-  // --- 4-6. 共同表現リスト ---
-  renderSharedList();
+// --- 4-6. Supabaseから共同表現を読み込む ---
+loadSharedNarratives();
 
+navigateTo('detail');
   navigateTo('detail');
 }
 
