@@ -1295,4 +1295,4 @@ console.log(
     `📚 登録された事件: ${eventsData.length}件`
   );
 
-}); // 
+});
