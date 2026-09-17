@@ -427,7 +427,6 @@ function openEventDetail(eventId) {
 loadSharedNarratives();
 
 navigateTo('detail');
-  navigateTo('detail');
 }
 
 
