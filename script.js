@@ -1286,6 +1286,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // 共同表現の登録ボタン
   document.getElementById('submitNarrative')?.addEventListener('click', submitSharedNarrative);
 
-  console.log('🎌 Shared Memory Project (日本語版) 読み込み完了');
-  console.log(`📚 登録された事件: ${eventsData.length}件`);
-});
+  
+console.log(
+    '🎌 Shared Memory Project (日本語版) 読み込み完了'
+  );
+
+  console.log(
+    `📚 登録された事件: ${eventsData.length}件`
+  );
+
+}); // 
