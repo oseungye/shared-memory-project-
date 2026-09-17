@@ -817,12 +817,372 @@ function getLangBadge(code) {
 
 
 /* ============================================================
-   ✍️ 9. 共同表現の作成機能
+   ✍️ 9. 共同表現の作成機能 — Supabase連携版
    ============================================================
+   共同表現はSupabaseの shared_expressions テーブルに保存します。
+   ページを再読み込みしてもデータは消えず、
+   他の端末から登録された表現も共有されます。
+   ============================================================ */
+
+
+/**
+ * Supabaseから共同表現を読み込む
+ */
+async function loadSharedNarratives() {
+  if (!currentEventId) {
+    sharedNarratives = [];
+    renderSharedList();
+    return;
+  }
+
+  const list = document.getElementById('sharedList');
+
+  if (list) {
+    list.innerHTML = `
+      <div class="shared-empty">
+        共同表現を読み込んでいます... ／ 공동 표현을 불러오는 중입니다...
+      </div>
+    `;
+  }
+
+  const { data, error } = await db
+    .from('shared_expressions')
+    .select('*')
+    .eq('event_key', currentEventId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Supabase 불러오기 오류:', error);
+
+    if (list) {
+      list.innerHTML = `
+        <div class="shared-empty">
+          読み込みに失敗しました。／ 데이터를 불러오지 못했습니다.
+        </div>
+      `;
+    }
+
+    return;
+  }
+
+  sharedNarratives = (data || []).map(item => ({
+    id: item.id,
+    user: item.author_name || '익명',
+    text: item.content || '',
+    reason: '',
+    type: '',
+    eventId: item.event_key,
+    lang: item.country_code || 'unknown',
+    date: formatSharedDate(item.created_at)
+  }));
+
+  renderSharedList();
+}
+
+
+/**
+ * 共同表現をSupabaseに登録する
+ */
+async function submitSharedNarrative() {
+  const nameInput = document.getElementById('userName');
+  const narrativeInput = document.getElementById('userNarrative');
+  const reasonInput = document.getElementById('userReason');
+  const typeEl = document.getElementById('userType');
+
+  const name = nameInput ? nameInput.value.trim() : '';
+  const text = narrativeInput ? narrativeInput.value.trim() : '';
+  const reason = reasonInput ? reasonInput.value.trim() : '';
+  const type = typeEl ? typeEl.value : '';
+
+  if (!name || !text) {
+    alert(
+      'ニックネームと共同表現は必須項目です。／ 닉네임과 공동 표현은 필수입니다.'
+    );
+    return;
+  }
+
+  if (!currentEventId) {
+    alert(
+      '事件を選択してください。／ 사건을 선택해주세요.'
+    );
+    return;
+  }
+
+  const detectedLang = detectLanguage(text);
+
+  const submitButton = document.getElementById('submitNarrative');
+
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.dataset.originalText = submitButton.textContent;
+    submitButton.textContent = '登録中... ／ 등록 중...';
+  }
+
+  const { error } = await db
+    .from('shared_expressions')
+    .insert([
+      {
+        event_key: currentEventId,
+        author_name: name,
+        country_code: detectedLang,
+        content: text
+      }
+    ]);
+
+  if (submitButton) {
+    submitButton.disabled = false;
+    submitButton.textContent =
+      submitButton.dataset.originalText || '登録';
+  }
+
+  if (error) {
+    console.error('Supabase 저장 오류:', error);
+
+    alert(
+      '登録に失敗しました。／ 등록에 실패했습니다.\n\n' +
+      '오류 내용: ' +
+      error.message
+    );
+
+    return;
+  }
+
+  if (nameInput) nameInput.value = '';
+  if (narrativeInput) narrativeInput.value = '';
+  if (reasonInput) reasonInput.value = '';
+  if (typeEl) typeEl.value = '';
+
+  await loadSharedNarratives();
+
+  alert(
+    '共同表現を登録しました。／ 공동 표현이 등록되었습니다.'
+  );
+}
+
+
+/**
+ * Supabaseの日付を画面表示用に変換
+ */
+function formatSharedDate(dateString) {
+  if (!dateString) return '';
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleDateString('ja-JP');
+}
+
+
+/**
+ * 現在選択されている事件の共同表現を画面に表示
+ */
+function renderSharedList() {
+  const list = document.getElementById('sharedList');
+
+  if (!list) return;
+
+  const items = sharedNarratives.filter(
+    item => item.eventId === currentEventId
+  );
+
+  if (items.length === 0) {
+    list.innerHTML = `
+      <div class="shared-empty">
+        まだ提案がありません。最初の提案を書いてみましょう。
+        ／ 아직 제안이 없습니다. 첫 번째 공동 표현을 작성해보세요.
+      </div>
+    `;
+
+    return;
+  }
+
+  list.innerHTML = items.map(item => {
+    const badge = getLangBadge(item.lang || 'unknown');
+
+    const typeBadge = item.type
+      ? `
+        <span
+          class="narrative-card__keyword"
+          style="font-size:0.72rem;background:var(--accent-soft);"
+        >
+          ${escapeHtml(item.type)}
+        </span>
+      `
+      : '';
+
+    return `
+      <div class="shared-item">
+
+        <div class="shared-item__header">
+
+          <div class="shared-item__user">
+
+            ${escapeHtml(item.user)}
+
+            <span
+              class="narrative-card__keyword"
+              style="font-size:0.72rem;"
+            >
+              ${badge.flag} ${badge.label}
+            </span>
+
+            ${typeBadge}
+
+          </div>
+
+          <div class="shared-item__date">
+            ${escapeHtml(item.date)}
+          </div>
+
+        </div>
+
+        <div class="shared-item__text">
+          「${escapeHtml(item.text)}」
+        </div>
+
+        ${
+          item.reason
+            ? `
+              <div class="shared-item__reason">
+                <strong>理由:</strong>
+                ${escapeHtml(item.reason)}
+              </div>
+            `
+            : ''
+        }
+
+      </div>
+    `;
+  }).join('');
+}
+
+
+/**
+ * XSS対策
+ * ユーザーがHTMLタグ等を入力してもコードとして実行させず、
+ * 文字列として表示します。
+ */
+function escapeHtml(str) {
+  const div = document.createElement('div');
+
+  div.textContent = String(str ?? '');
+
+  return div.innerHTML;
+}
+
+
+/* ============================================================
+   🚀 10. ページ読み込み時の初期化
+   ============================================================ */
+
+document.addEventListener('DOMContentLoaded', () => {
+
+  /* 事件カード生成 */
+  renderEventCards();
+
+
+  /* ナビゲーション */
+  document.querySelectorAll('[data-page]').forEach(el => {
+
+    el.addEventListener('click', (e) => {
+
+      e.preventDefault();
+
+      navigateTo(el.dataset.page);
+
+    });
+
+  });
+
+
+  /* タブ切り替え */
+  document.querySelectorAll('.tab').forEach(tab => {
+
+    tab.addEventListener('click', () => {
+
+      switchTab(tab.dataset.tab);
+
+    });
+
+  });
+
+
+  /* AI分析ボタン */
+  document
+    .getElementById('aiAnalyzeBtn')
+    ?.addEventListener(
+      'click',
+      runAIAnalysis
+    );
+
+
+  /* 共同表現登録ボタン */
+  document
+    .getElementById('submitNarrative')
+    ?.addEventListener(
+      'click',
+      submitSharedNarrative
+    );
+
+
+  console.log(
+    '🎌 Shared Memory Project (日本語版) 読み込み完了'
+  );
+
+  console.log(
+    `📚 登録された事件: ${eventsData.length}件`
+  );
+
+}); ============================================================
    ※ サーバーが無いためブラウザのメモリ(変数)にのみ保存します。
      再読み込みすると消えます。(実サービスならDB連携が必要)
 */
-function submitSharedNarrative() {
+async function submitSharedNarrative() {
+  const name = document.getElementById('userName').value.trim();
+  const text = document.getElementById('userNarrative').value.trim();
+  const reason = document.getElementById('userReason').value.trim();
+
+  const typeEl = document.getElementById('userType');
+  const type = typeEl ? typeEl.value : '';
+
+  if (!name || !text) {
+    alert('ニックネームと共同表現は必須項目です。／ 닉네임과 공동 표현은 필수입니다.');
+    return;
+  }
+
+  if (!currentEventId) {
+    alert('事件を選択してください。／ 사건을 선택해주세요.');
+    return;
+  }
+
+  const detectedLang = detectLanguage(text);
+
+  const { error } = await db
+    .from('shared_expressions')
+    .insert([
+      {
+        event_key: currentEventId,
+        author_name: name,
+        country_code: detectedLang,
+        content: text
+      }
+    ]);
+
+  if (error) {
+    console.error('Supabase 저장 오류:', error);
+    alert('登録に失敗しました。／ 등록에 실패했습니다.');
+    return;
+  }
+
+  document.getElementById('userName').value = '';
+  document.getElementById('userNarrative').value = '';
+  document.getElementById('userReason').value = '';
+
+  await loadSharedNarratives();
+}
   const name = document.getElementById('userName').value.trim();
   const text = document.getElementById('userNarrative').value.trim();
   const reason = document.getElementById('userReason').value.trim();
@@ -929,18 +1289,3 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('🎌 Shared Memory Project (日本語版) 読み込み完了');
   console.log(`📚 登録された事件: ${eventsData.length}件`);
 });
-async function testSupabaseConnection() {
-  const { data, error } = await db
-    .from("shared_expressions")
-    .select("*");
-
-  if (error) {
-    console.error("❌ Supabase 연결 실패:", error);
-    return;
-  }
-
-  console.log("✅ Supabase 연결 성공!");
-  console.log("현재 데이터:", data);
-}
-
-testSupabaseConnection();
